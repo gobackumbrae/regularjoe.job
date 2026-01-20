@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Job Tracker (Offline)</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #0b0c10; color: #e9eef5; }
+    header { position: sticky; top: 0; background: #111318; border-bottom: 1px solid #202430; padding: 12px 14px; z-index: 2; }
+    header h1 { font-size: 16px; margin: 0 0 8px; font-weight: 700; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    button, input, select, textarea {
+      background: #141824; color: #e9eef5; border: 1px solid #2a3142; border-radius: 10px;
+      padding: 10px 12px; font-size: 14px;
+    }
+    button { cursor: pointer; }
+    button:hover { border-color: #3a4762; }
+    .pill { display:inline-flex; gap:6px; align-items:center; padding: 4px 10px; border-radius: 999px; border: 1px solid #2a3142; font-size: 12px; }
+    .pill.bad { border-color: #6b2d2d; background: rgba(255,70,70,0.12); }
+    .pill.good { border-color: #2d6b3b; background: rgba(70,255,140,0.10); }
+    main { padding: 14px; display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .card { background: #0f121a; border: 1px solid #202430; border-radius: 14px; padding: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 10px; }
+    .grid .full { grid-column: 1 / -1; }
+    label { display: grid; gap: 6px; font-size: 12px; color: #b9c4d6; }
+    textarea { min-height: 78px; resize: vertical; }
+    .table-wrap { overflow: auto; -webkit-overflow-scrolling: touch; border-radius: 14px; border: 1px solid #202430; }
+    table { width: 100%; border-collapse: collapse; min-width: 860px; }
+    th, td { border-bottom: 1px solid #1b1f2b; padding: 10px; vertical-align: top; }
+    th { text-align: left; font-size: 12px; color: #b9c4d6; position: sticky; top: 0; background: #0f121a; }
+    td { font-size: 13px; }
+    tr:hover td { background: rgba(255,255,255,0.03); }
+    .muted { color: #a7b4c9; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .right { margin-left: auto; }
+    .small { font-size: 12px; }
+    .danger { border-color: #6b2d2d; }
+    .ok { border-color: #2d6b3b; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  
+
+/* Mobile-friendly tweaks */
+@media (max-width: 680px){
+  header .row{flex-direction:column; align-items:stretch;}
+  header h1{font-size:18px;}
+  .actions{width:100%; justify-content:flex-start;}
+  .filters{flex-direction:column; align-items:stretch;}
+  .filters > div{width:100%;}
+  .grid{grid-template-columns:1fr;}
+  input, select, textarea{font-size:16px;} /* prevent iOS zoom */
+
+  /* Turn the table into tap-friendly cards */
+  .table-wrap{overflow:visible; border:none; background:transparent;}
+  table{min-width:0; background:transparent;}
+  thead{display:none;}
+  tbody tr{display:block; background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.08);
+           border-radius:14px; margin:10px 0; overflow:hidden;}
+  tbody td{display:grid; grid-template-columns:120px 1fr; gap:12px;
+           padding:10px 12px; border-bottom:none; border-top:1px solid rgba(255,255,255,.08);}
+  tbody td::before{content:attr(data-label); color:var(--muted); font-weight:700;}
+
+  /* Make Company + Job Title read like a header */
+  tbody td[data-label="Company"],
+  tbody td[data-label="Job title"]{grid-template-columns:1fr; border-top:none;}
+  tbody td[data-label="Company"]{font-weight:800; font-size:16px; padding-bottom:0;}
+  tbody td[data-label="Job title"]{color:#cfe1ff; padding-top:4px;}
+  tbody td[data-label="Company"]::before,
+  tbody td[data-label="Job title"]::before{display:none;}
+
+  /* Notes can use full width */
+  tbody td.col-notes{grid-template-columns:1fr;}
+  tbody td.col-notes::before{margin-bottom:6px;}
+
+  /* Hide merge_key on mobile (still available in the editor) */
+  tbody td.col-key{display:none;}
+}
+
+</style>
+</head>
+<body>
+  <header>
+    <h1>Job Tracker (Offline, Vanilla JS)</h1>
+    <div class="row">
+      <input id="q" placeholder="Search company / title / notes…" style="flex:1; min-width: 220px;" />
+      <select id="filterView">
+        <option value="all">All</option>
+        <option value="missingDocs">Missing docs</option>
+        <option value="followupDue">Follow-up due</option>
+      </select>
+      <select id="filterStatus">
+        <option value="">Any status</option>
+        <option>Applied</option>
+        <option>Interview</option>
+        <option>Offer</option>
+        <option>Rejected</option>
+        <option>Withdrawn</option>
+        <option>Archived</option>
+      </select>
+      <button id="newBtn" class="ok">New</button>
+      <label class="pill" title="Import a JSON export (from this app or from your Excel export script)">
+        Import JSON
+        <input id="import" type="file" accept="application/json" style="display:none" />
+      </label>
+      <button id="exportBtn">Export JSON</button>
+      <button id="wipeBtn" class="danger">Clear all</button>
+      <span id="stats" class="pill right"></span>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="row" style="margin-bottom:10px;">
+        <div class="pill"><span class="mono">merge_key</span>: <span id="curKey" class="mono muted">(new)</span></div>
+        <div id="flags"></div>
+        <span class="right small muted">Tip: click a row below to edit</span>
+      </div>
+
+      <div class="grid">
+        <label>Company
+          <input id="company" placeholder="Aurec" />
+        </label>
+        <label>Job title
+          <input id="job_title" placeholder="IT Service Desk Analyst" />
+        </label>
+        <label>Status
+          <select id="status">
+            <option value="">(blank)</option>
+            <option>Applied</option>
+            <option>Interview</option>
+            <option>Offer</option>
+            <option>Rejected</option>
+            <option>Withdrawn</option>
+            <option>Archived</option>
+          </select>
+        </label>
+        <label>Applied date
+          <input id="date_applied" type="date" />
+        </label>
+        <label>Follow-up date
+          <input id="first_follow_up" type="date" />
+        </label>
+        <label>Employer ID
+          <input id="company_employer_id" placeholder="79" />
+        </label>
+
+        <label>Resume project id
+          <input id="resume_project_id" placeholder="672cc09a…" class="mono" />
+        </label>
+        <label>Cover project id
+          <input id="cover_project_id" placeholder="672cc242…" class="mono" />
+        </label>
+        <label class="full">Notes
+          <textarea id="notes" placeholder="Interview 1 scheduled…"></textarea>
+        </label>
+
+        <div class="row full" style="gap:8px;">
+          <button id="saveBtn" class="ok">Save</button>
+          <button id="deleteBtn" class="danger" disabled>Delete</button>
+          <span class="small muted" id="saveMsg"></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Company</th>
+              <th>Title</th>
+              <th>Status</th>
+              <th>Follow-up</th>
+              <th>Docs</th>
+              <th>Notes</th>
+              <th class="mono">merge_key</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    q: $('q'), filterView: $('filterView'), filterStatus: $('filterStatus'),
+    newBtn: $('newBtn'), import: $('import'), exportBtn: $('exportBtn'), wipeBtn: $('wipeBtn'),
+    stats: $('stats'), tbody: $('tbody'),
+    curKey: $('curKey'), flags: $('flags'), saveMsg: $('saveMsg'),
+    company: $('company'), job_title: $('job_title'), status: $('status'),
+    date_applied: $('date_applied'), first_follow_up: $('first_follow_up'), company_employer_id: $('company_employer_id'),
+    resume_project_id: $('resume_project_id'), cover_project_id: $('cover_project_id'), notes: $('notes'),
+    saveBtn: $('saveBtn'), deleteBtn: $('deleteBtn')
+  };
+
+  const DB_NAME = 'jobtracker';
+  const STORE = 'applications';
+
+  /** @type {IDBDatabase|null} */
+  let db = null;
+  /** @type {any|null} */
+  let current = null; // currently edited record
+  /** @type {any[]} */
+  let cache = []; // in-memory list for filtering/rendering
+
+  function todayISO(){
+    const d = new Date();
+    const z = (n)=> String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+  }
+
+  function normalizeStr(s){
+    return (s || '').toString().toLowerCase();
+  }
+
+  function isMissingDocs(rec){
+    const r = (rec.resume_project_id||'').toString().trim();
+    const c = (rec.cover_project_id||'').toString().trim();
+    return !r && !c;
+  }
+
+  function followupDue(rec){
+    const f = (rec.first_follow_up||'').toString().trim();
+    if (!f) return false;
+    return f <= todayISO() && (rec.status||'') !== 'Rejected' && (rec.status||'') !== 'Archived';
+  }
+
+  function makeMergeKey(){
+    // Prefer a stable merge_key if one exists; for new manual records, generate one.
+    if (crypto?.randomUUID) return `manual:${crypto.randomUUID()}`;
+    return `manual:${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function openDb(){
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        const store = db.createObjectStore(STORE, { keyPath: 'merge_key' });
+        store.createIndex('company', 'company', { unique: false });
+        store.createIndex('job_title', 'job_title', { unique: false });
+        store.createIndex('status', 'status', { unique: false });
+        store.createIndex('first_follow_up', 'first_follow_up', { unique: false });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function tx(mode='readonly'){
+    if (!db) throw new Error('DB not open');
+    return db.transaction(STORE, mode).objectStore(STORE);
+  }
+
+  function getAll(){
+    return new Promise((resolve, reject) => {
+      const req = tx().getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function put(rec){
+    return new Promise((resolve, reject) => {
+      const req = tx('readwrite').put(rec);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function del(key){
+    return new Promise((resolve, reject) => {
+      const req = tx('readwrite').delete(key);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function clearStore(){
+    return new Promise((resolve, reject) => {
+      const req = tx('readwrite').clear();
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function setCurrent(rec){
+    current = rec;
+    els.curKey.textContent = rec?.merge_key || '(new)';
+    els.deleteBtn.disabled = !rec?.merge_key;
+
+    els.company.value = rec?.company || '';
+    els.job_title.value = rec?.job_title || '';
+    els.status.value = rec?.status || '';
+    els.date_applied.value = rec?.date_applied || '';
+    els.first_follow_up.value = rec?.first_follow_up || '';
+    els.company_employer_id.value = rec?.company_employer_id || '';
+    els.resume_project_id.value = rec?.resume_project_id || '';
+    els.cover_project_id.value = rec?.cover_project_id || '';
+    els.notes.value = rec?.notes || '';
+
+    // flags
+    const pills = [];
+    if (rec?.is_merged_record === 'YES') pills.push('<span class="pill">Merged record</span>');
+    if (isMissingDocs(rec||{})) pills.push('<span class="pill bad">Missing docs</span>');
+    if (followupDue(rec||{})) pills.push('<span class="pill bad">Follow-up due</span>');
+    els.flags.innerHTML = pills.join(' ');
+  }
+
+  function rowHtml(rec){
+    const company = rec.company || '';
+    const title = rec.job_title || '';
+    const status = rec.status || '';
+    const fu = rec.first_follow_up || '';
+    const docs = (() => {
+      const r = (rec.resume_project_id||'').toString().trim();
+      const c = (rec.cover_project_id||'').toString().trim();
+      if (r && c) return '<span class="pill good">Resume + Cover</span>';
+      if (r) return '<span class="pill">Resume</span>';
+      if (c) return '<span class="pill">Cover</span>';
+      return '<span class="pill bad">None</span>';
+    })();
+    const notes = (rec.notes || '').toString();
+    const key = rec.merge_key || '';
+
+    return `
+      <tr data-key="${escapeHtml(key)}">
+        <td data-label="Company">${escapeHtml(company)}</td>
+        <td data-label="Job title">${escapeHtml(title)}</td>
+        <td data-label="Status">${escapeHtml(status)}</td>
+        <td data-label="Follow-up">${escapeHtml(fu)}</td>
+        <td data-label="Docs">${docs}</td>
+        <td data-label="Notes" class="muted col-notes">${escapeHtml(notes.slice(0,140))}${notes.length>140?'…':''}</td>
+        <td data-label="merge_key" class="mono muted col-key">${escapeHtml(key)}</td>
+      </tr>`;
+  }
+
+  function escapeHtml(s){
+    return (s || '').toString()
+      .replaceAll('&','&amp;')
+      .replaceAll('<','&lt;')
+      .replaceAll('>','&gt;')
+      .replaceAll('"','&quot;')
+      .replaceAll("'",'&#39;');
+  }
+
+  function applyFilters(items){
+    const q = normalizeStr(els.q.value);
+    const view = els.filterView.value;
+    const status = els.filterStatus.value;
+
+    return items.filter(rec => {
+      if (status && (rec.status||'') !== status) return false;
+      if (view === 'missingDocs' && !isMissingDocs(rec)) return false;
+      if (view === 'followupDue' && !followupDue(rec)) return false;
+      if (!q) return true;
+      const hay = [rec.company, rec.job_title, rec.notes, rec.company_employer_id, rec.resume_project_id, rec.cover_project_id]
+        .map(x => (x ?? '').toString().toLowerCase()).join('  ');
+      return hay.includes(q);
+    });
+  }
+
+  function render(){
+    const filtered = applyFilters(cache);
+
+    // Sort: follow-up due first, then by follow-up date, then company/title
+    filtered.sort((a,b) => {
+      const ad = followupDue(a) ? 0 : 1;
+      const bd = followupDue(b) ? 0 : 1;
+      if (ad !== bd) return ad - bd;
+      const af = (a.first_follow_up||'').toString();
+      const bf = (b.first_follow_up||'').toString();
+      if (af !== bf) return af.localeCompare(bf);
+      return (a.company||'').toString().localeCompare((b.company||'').toString()) ||
+             (a.job_title||'').toString().localeCompare((b.job_title||'').toString());
+    });
+
+    els.tbody.innerHTML = filtered.map(rowHtml).join('');
+
+    const total = cache.length;
+    const miss = cache.filter(isMissingDocs).length;
+    const due  = cache.filter(followupDue).length;
+    els.stats.textContent = `${filtered.length}/${total} shown • Missing docs: ${miss} • Follow-ups due: ${due}`;
+  }
+
+  async function refresh(){
+    cache = await getAll();
+    render();
+  }
+
+  function download(filename, text){
+    const blob = new Blob([text], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+  }
+
+  async function onSave(){
+    const rec = current ? {...current} : {};
+
+    rec.company = els.company.value.trim();
+    rec.job_title = els.job_title.value.trim();
+    rec.status = els.status.value;
+    rec.date_applied = els.date_applied.value;
+    rec.first_follow_up = els.first_follow_up.value;
+    rec.company_employer_id = els.company_employer_id.value.trim();
+    rec.resume_project_id = els.resume_project_id.value.trim();
+    rec.cover_project_id = els.cover_project_id.value.trim();
+    rec.notes = els.notes.value;
+
+    if (!rec.merge_key) rec.merge_key = makeMergeKey();
+    rec.last_updated = new Date().toISOString();
+
+    await put(rec);
+    setCurrent(rec);
+    els.saveMsg.textContent = 'Saved.';
+    setTimeout(() => (els.saveMsg.textContent=''), 900);
+    await refresh();
+  }
+
+  async function onDelete(){
+    if (!current?.merge_key) return;
+    if (!confirm('Delete this application?')) return;
+    await del(current.merge_key);
+    setCurrent(null);
+    await refresh();
+  }
+
+  async function onImport(file){
+    const text = await file.text();
+    let data;
+    try { data = JSON.parse(text); }
+    catch { alert('Invalid JSON file.'); return; }
+
+    const apps = Array.isArray(data) ? data : (data.applications || data.apps || []);
+    if (!Array.isArray(apps)) { alert('JSON should be an array, or an object with an applications array.'); return; }
+
+    let upserts = 0;
+    for (const raw of apps){
+      if (!raw || typeof raw !== 'object') continue;
+      const rec = {...raw};
+      // Make sure we have a key
+      if (!rec.merge_key){
+        // try a stable fallback
+        const appRow = (rec.app_row ?? '').toString().trim();
+        rec.merge_key = appRow ? `app_row:${appRow}` : makeMergeKey();
+      }
+      // Don’t overwrite user's status if missing in import
+      if (typeof rec.status === 'undefined') rec.status = '';
+
+      // Normalize to string date inputs if possible (safe)
+      for (const k of ['date_applied','first_follow_up']){
+        if (rec[k] instanceof Date) rec[k] = rec[k].toISOString().slice(0,10);
+        if (typeof rec[k] === 'string') rec[k] = rec[k].slice(0,10);
+      }
+
+      await put(rec);
+      upserts++;
+    }
+    await refresh();
+    alert(`Imported ${upserts} record(s).`);
+  }
+
+  // Wire up UI
+  els.newBtn.addEventListener('click', () => {
+    setCurrent(null);
+    if (window.matchMedia('(max-width: 900px)').matches) {
+      document.getElementById('recordCard')?.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+    els.company?.focus?.();
+  });
+  els.saveBtn.addEventListener('click', () => onSave().catch(err => alert(String(err))));
+  els.deleteBtn.addEventListener('click', () => onDelete().catch(err => alert(String(err))));
+
+  els.q.addEventListener('input', render);
+  els.filterView.addEventListener('change', render);
+  els.filterStatus.addEventListener('change', render);
+
+  els.import.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) onImport(file).catch(err => alert(String(err)));
+    e.target.value = ''; // allow re-import
+  });
+
+  els.exportBtn.addEventListener('click', async () => {
+    const apps = await getAll();
+    const payload = {
+      schema_version: 1,
+      exported_at: new Date().toISOString(),
+      applications: apps,
+    };
+    download(`jobtracker_export_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(payload, null, 2));
+  });
+
+  els.wipeBtn.addEventListener('click', async () => {
+    if (!confirm('Clear ALL applications from this app? This does not touch your Excel file.')) return;
+    await clearStore();
+    setCurrent(null);
+    await refresh();
+  });
+
+  els.tbody.addEventListener('click', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const key = tr.getAttribute('data-key');
+    const rec = cache.find(x => (x.merge_key||'') === key);
+    if (rec) {
+      setCurrent(rec);
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        document.getElementById('recordCard')?.scrollIntoView({behavior:'smooth', block:'start'});
+      }
+    }
+  });
+
+  // Boot
+  (async () => {
+    db = await openDb();
+    await refresh();
+    setCurrent(null);
+  })().catch(err => {
+    console.error(err);
+    alert('Failed to start DB: ' + String(err));
+  });
+})();
+</script>
+</body>
+</html>
