@@ -68,7 +68,7 @@ hr{border:none;border-top:1px solid var(--line);margin:.6rem 0}
   <div class="grid" id="list"></div>
 </main>
 
-<input id="file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>
+<input id="file" type="file" accept=".csv,.xlsx,.xls" hidden>
 
 <dialog id="dlg">
   <form method="dialog" class="card" id="form" style="margin:0">
@@ -271,6 +271,103 @@ hr{border:none;border-top:1px solid var(--line);margin:.6rem 0}
   els.file.onchange=(e)=>{const f=e.target.files&&e.target.files[0]; if(f) importFile(f); els.file.value="";};
 
   render();
+
+/*JT_PATCH_V1: CSV/XLSX import + CSV export + fix importFile */
+function __jt_iso(v){
+  if(!v) return "";
+  if(v instanceof Date) return v.toISOString().slice(0,10);
+  if(typeof v==="number" && isFinite(v)){
+    const d=new Date(Math.round((v-25569)*86400*1000));
+    return isNaN(d)?"":d.toISOString().slice(0,10);
+  }
+  const s=String(v).trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:"";
+}
+function __jt_get(row, ...names){
+  const m={};
+  for(const k in (row||{})){
+    m[String(k).toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"")] = row[k];
+  }
+  for(const n of names){
+    const v=m[n];
+    if(v!=null && String(v).trim()!=="") return v;
+  }
+  return "";
+}
+function __jt_mergeRows(rows){
+  const recs=[];
+  for(const r of rows||[]){
+    const company=String(__jt_get(r,"company","company_name","company_names","employer","organisation","organization")).trim();
+    const title  =String(__jt_get(r,"job_title","job_title_norm","title","role","position")).trim();
+    if(!company || !title) continue;
+
+    const applied = __jt_iso(__jt_get(r,"applied","applied_date","date_applied","application_date","submitted_date","date"));
+    recs.push({
+      id: String(__jt_get(r,"id","app_row","application_id") || Date.now()+Math.random()),
+      company, title,
+      status: String(__jt_get(r,"status","application_status") || (applied?"Applied":"Saved")),
+      applied,
+      follow: __jt_iso(__jt_get(r,"follow","follow_up","followup","next_follow_up","next_followup")),
+      location: String(__jt_get(r,"location","city","region")).trim(),
+      url: String(__jt_get(r,"url","job_url","link","job_link","posting_url")).trim(),
+      resume: String(__jt_get(r,"resume","resume_id","resume_project_id","resume_project_name","resume_version")).trim(),
+      cover: String(__jt_get(r,"cover","cover_id","cover_project_id","cover_project_name","cover_version")).trim(),
+      notes: String(__jt_get(r,"notes","note","comments","comment")).trim(),
+      updated: Date.now(),
+    });
+  }
+
+  // merge: just prepend imported records
+  apps = recs.concat(apps);
+
+  try{ save(apps); }catch(e){ try{ save(); }catch(_){} }
+  try{ render(); }catch(e){}
+
+  alert("Imported " + recs.length + " rows");
+}
+function __jt_importAny(file){
+  if(!window.XLSX){ alert("XLSX parser not loaded. Reload the page."); return; }
+  const name=(file.name||"").toLowerCase();
+  const fr=new FileReader();
+  fr.onload=()=>{
+    try{
+      const wb = name.endsWith(".csv")
+        ? XLSX.read(String(fr.result), {type:"string"})
+        : XLSX.read(new Uint8Array(fr.result), {type:"array", cellDates:true});
+
+      const sn = (wb.SheetNames||[]).find(n=>String(n).toLowerCase()==="applications_clean") || (wb.SheetNames||[])[0];
+      const ws = wb.Sheets[sn];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:""});
+      __jt_mergeRows(rows);
+    }catch(e){
+      alert("Import failed: " + e.message);
+    }
+  };
+  if(name.endsWith(".csv")) fr.readAsText(file);
+  else fr.readAsArrayBuffer(file);
+}
+
+// fix your current crash + keep old handler name working
+function importFile(file){ __jt_importAny(file); }
+function importJsonFile(file){ __jt_importAny(file); }
+
+// override Export so it exports CSV (human-readable)
+function exportJson(){
+  if(!window.XLSX){ alert("XLSX parser not loaded. Reload the page."); return; }
+  const cols=["company","title","status","applied","follow","location","url","resume","cover","notes"];
+  const rows=apps.map(a=>{const o={}; for(const c of cols) o[c]=a[c]||""; return o;});
+  const ws=XLSX.utils.json_to_sheet(rows,{header:cols,skipHeader:false});
+  const csv=XLSX.utils.sheet_to_csv(ws);
+
+  const d=new Date(), y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,"0"), da=String(d.getDate()).padStart(2,"0");
+  const blob=new Blob([csv],{type:"text/csv"});
+  const a=document.createElement("a");
+  a.download=`job-tracker-${y}${m}${da}.csv`;
+  a.href=URL.createObjectURL(blob);
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+
 })();
 </script>
 </body>
