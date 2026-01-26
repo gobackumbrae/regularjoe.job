@@ -32,6 +32,7 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
 .actions{display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap}
 hr{border:none;border-top:1px solid var(--line);margin:.6rem 0}
 </style>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 <header>
@@ -67,7 +68,7 @@ hr{border:none;border-top:1px solid var(--line);margin:.6rem 0}
   <div class="grid" id="list"></div>
 </main>
 
-<input id="file" type="file" accept="application/json" hidden>
+<input id="file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>
 
 <dialog id="dlg">
   <form method="dialog" class="card" id="form" style="margin:0">
@@ -267,7 +268,7 @@ hr{border:none;border-top:1px solid var(--line);margin:.6rem 0}
 
   els.exportBtn.onclick=exportJson;
   els.importBtn.onclick=()=>els.file.click();
-  els.file.onchange=(e)=>{const f=e.target.files&&e.target.files[0]; if(f) importJson(f); els.file.value="";};
+  els.file.onchange=(e)=>{const f=e.target.files&&e.target.files[0]; if(f) importFile(f); els.file.value="";};
 
   render();
 })();
