@@ -76,8 +76,8 @@ hr{border:none;border-top:1px solid var(--line);margin:.6rem 0}
       <button class="btn" value="cancel">✕</button>
     </div>
     <hr>
-    <div class="row"><div style="flex:1"><div class="small">Company</div><input id="company" required></div></div>
-    <div class="row"><div style="flex:1"><div class="small">Job title</div><input id="title" required></div></div>
+    <div class="row"><div style="flex:1"><div class="small">Company</div><input id="company" required autocomplete="organization"></div></div>
+    <div class="row"><div style="flex:1"><div class="small">Job title</div><input id="title" required autocomplete="off"></div></div>
     <div class="row">
       <div style="flex:1"><div class="small">Status</div>
         <select id="fstatus">
@@ -85,14 +85,14 @@ hr{border:none;border-top:1px solid var(--line);margin:.6rem 0}
           <option>Offer</option><option>Rejected</option><option>Ghosted</option><option>Withdrawn</option>
         </select>
       </div>
-      <div style="flex:1"><div class="small">Applied</div><input id="applied" type="date"></div>
+      <div style="flex:1"><div class="small">Applied</div><input id="applied" type="date" autocomplete="off"></div>
     </div>
     <div class="row">
-      <div style="flex:1"><div class="small">Follow‑up</div><input id="follow" type="date"></div>
-      <div style="flex:1"><div class="small">Location</div><input id="location" placeholder="e.g. Sydney (Hybrid)"></div>
+      <div style="flex:1"><div class="small">Follow‑up</div><input id="follow" type="date" autocomplete="off"></div>
+      <div style="flex:1"><div class="small">Location</div><input id="location" placeholder="e.g. Sydney (Hybrid)" autocomplete="off"></div>
     </div>
-    <div class="row"><div style="flex:1"><div class="small">Job URL</div><input id="url" placeholder="https://…"></div></div>
-    <div class="row"><div style="flex:1"><div class="small">Notes</div><textarea id="notes"></textarea></div></div>
+    <div class="row"><div style="flex:1"><div class="small">Job URL</div><input id="url" placeholder="https://…" autocomplete="url"></div></div>
+    <div class="row"><div style="flex:1"><div class="small">Notes</div><textarea id="notes" autocomplete="off"></textarea></div></div>
     <div class="actions">
       <button type="button" class="btn" id="delBtn" style="margin-right:auto;display:none">Delete</button>
       <button class="btn" value="cancel">Cancel</button>
